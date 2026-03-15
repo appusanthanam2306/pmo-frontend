@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { useAuth } from "./AuthContext";
 import axios from "axios";
 import {
   Box,
@@ -26,7 +27,7 @@ const Sheet = () => {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const authToken = localStorage.getItem("token");
+  const { token } = useAuth();
 
   const fetchSheetData = async () => {
     setLoading(true);
@@ -35,7 +36,7 @@ const Sheet = () => {
       const response = await axios.get(
         `http://localhost:3000/api/sheets/${id}/data`,
         {
-          headers: { Authorization: `Bearer ${authToken}` },
+          headers: { Authorization: `Bearer ${token}` },
         },
       );
       setColumns(response.data.columns || []);
@@ -90,7 +91,7 @@ const Sheet = () => {
         `http://localhost:3000/api/sheets/${id}/cells`,
         { cells: cellsToUpdate },
         {
-          headers: { Authorization: `Bearer ${authToken}` },
+          headers: { Authorization: `Bearer ${token}` },
         },
       );
       await fetchSheetData(); // Refresh data
@@ -123,7 +124,11 @@ const Sheet = () => {
         Sheet Data
       </Typography>
 
-      <TableContainer component={Paper} variant="outlined" sx={{ width: "100%" }}>
+      <TableContainer
+        component={Paper}
+        variant="outlined"
+        sx={{ width: "100%" }}
+      >
         <Table size="small">
           <TableHead>
             <TableRow>

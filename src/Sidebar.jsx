@@ -1,33 +1,51 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "./AuthContext";
 import axios from "axios";
 import Box from "@mui/material/Box";
 import Drawer from "@mui/material/Drawer";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemButton from "@mui/material/ListItemButton";
+import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import Divider from "@mui/material/Divider";
 import Typography from "@mui/material/Typography";
+import Collapse from "@mui/material/Collapse";
+import HomeIcon from "@mui/icons-material/Home";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import StorageIcon from "@mui/icons-material/Storage";
+import FolderIcon from "@mui/icons-material/Folder";
+import GroupIcon from "@mui/icons-material/Group";
+import DashboardCustomizeIcon from "@mui/icons-material/DashboardCustomize";
+import ExpandLess from "@mui/icons-material/ExpandLess";
+import ExpandMore from "@mui/icons-material/ExpandMore";
 
-const drawerWidth = 200;
+const drawerWidth = 240;
 
 const Sidebar = () => {
   const [sheets, setSheets] = useState([]);
-  const [user, setUser] = useState(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const { token, user } = useAuth();
+  const [sheetsOpen, setSheetsOpen] = useState(false);
+
+  const isActive = (path) => location.pathname === path;
+  const isActiveStartsWith = (path) => location.pathname.startsWith(path);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const userData = localStorage.getItem("user");
-    if (userData) {
-      setUser(JSON.parse(userData));
+    // Ensure the Sheets section is expanded when the user is on a sheet.
+    if (isActiveStartsWith("/sheets")) {
+      setSheetsOpen(true);
     }
+  }, [location.pathname]);
+
+  useEffect(() => {
     if (token) {
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
       fetchSheets();
     }
-  }, []);
+  }, [token]);
 
   const fetchSheets = async () => {
     try {
@@ -38,6 +56,36 @@ const Sidebar = () => {
     }
   };
 
+  const menuItems = useMemo(
+    () => [
+      {
+        key: "home",
+        label: "Home",
+        icon: <HomeIcon fontSize="small" />,
+        path: "/",
+      },
+      {
+        key: "upload",
+        label: "Upload",
+        icon: <UploadFileIcon fontSize="small" />,
+        path: "/upload",
+      },
+      {
+        key: "sheets",
+        label: "Sheets",
+        icon: <StorageIcon fontSize="small" />,
+      },
+      {
+        key: "users",
+        label: "Users",
+        icon: <GroupIcon fontSize="small" />,
+        path: "/users",
+        adminOnly: true,
+      },
+    ],
+    [],
+  );
+
   return (
     <Drawer
       variant="permanent"
@@ -47,50 +95,122 @@ const Sidebar = () => {
         [`& .MuiDrawer-paper`]: {
           width: drawerWidth,
           boxSizing: "border-box",
+          bgcolor: "background.paper",
+          borderRight: (theme) => `1px solid ${theme.palette.divider}`,
         },
       }}
     >
-      <Box sx={{ p: 2 }}>
-        <Typography variant="h6">Navigation</Typography>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          columnGap: 1,
+          px: 2,
+          py: 2,
+          bgcolor: "primary.main",
+          color: "primary.contrastText",
+        }}
+      >
+        <Box
+          sx={{
+            width: 34,
+            height: 34,
+            borderRadius: 1,
+            bgcolor: "background.paper",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <DashboardCustomizeIcon color="primary" fontSize="small" />
+        </Box>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          PMO Tracking
+        </Typography>
       </Box>
-      <Divider />
-      <List dense>
-        <ListItem disablePadding>
-          <ListItemButton onClick={() => navigate("/upload")}>
-            <ListItemText primary="Upload" />
-          </ListItemButton>
-        </ListItem>
 
-        <ListItem>
-          <ListItemText
-            primary="Sheets"
-            primaryTypographyProps={{ variant: "subtitle2" }}
-          />
-        </ListItem>
-        {sheets.map((sheet) => (
-          <ListItem key={sheet.id} disablePadding>
-            <ListItemButton
-              onClick={() => navigate(`/sheets/${sheet.id}`)}
-              sx={{ pl: 4 }}
-            >
-              <ListItemText
-                primary={sheet.name}
-                primaryTypographyProps={{ variant: "body2" }}
-              />
-            </ListItemButton>
-          </ListItem>
-        ))}
+      <List dense disablePadding>
+        {menuItems.map((item) => {
+          if (item.adminOnly && user?.role !== "ADMIN") {
+            return null;
+          }
 
-        {user && user.role === "ADMIN" && (
-          <>
-            <Divider sx={{ my: 1 }} />
-            <ListItem disablePadding>
-              <ListItemButton onClick={() => navigate("/users")}>
-                <ListItemText primary="Users" />
+          if (item.key === "sheets") {
+            const parentSelected = isActiveStartsWith("/sheets");
+
+            return (
+              <Box key={item.key}>
+                <ListItem disablePadding>
+                  <ListItemButton
+                    onClick={() => setSheetsOpen((prev) => !prev)}
+                    selected={parentSelected}
+                    sx={{
+                      px: 2,
+                      py: 1.25,
+                      borderRadius: 1,
+                      mx: 1,
+                      mt: 1,
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 36, color: "inherit" }}>
+                      {item.icon}
+                    </ListItemIcon>
+                    <ListItemText primary={item.label} />
+                    {sheetsOpen ? <ExpandLess /> : <ExpandMore />}
+                  </ListItemButton>
+                </ListItem>
+                <Collapse in={sheetsOpen} timeout="auto" unmountOnExit>
+                  <List component="div" disablePadding>
+                    {sheets.map((sheet) => (
+                      <ListItem disablePadding key={sheet.id}>
+                        <ListItemButton
+                          onClick={() => navigate(`/sheets/${sheet.id}`)}
+                          selected={isActiveStartsWith(`/sheets/${sheet.id}`)}
+                          sx={{
+                            pl: 6,
+                            py: 1,
+                            borderRadius: 1,
+                            mx: 1,
+                            mt: 0.5,
+                          }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 36, color: "inherit" }}>
+                            <FolderIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={sheet.name}
+                            primaryTypographyProps={{ variant: "body2" }}
+                          />
+                        </ListItemButton>
+                      </ListItem>
+                    ))}
+                  </List>
+                </Collapse>
+              </Box>
+            );
+          }
+
+          return (
+            <ListItem disablePadding key={item.key}>
+              <ListItemButton
+                onClick={() => navigate(item.path)}
+                selected={isActive(item.path)}
+                sx={{
+                  px: 2,
+                  py: 1.25,
+                  borderRadius: 1,
+                  mx: 1,
+                  mt: 1,
+                }}
+              >
+                <ListItemIcon sx={{ minWidth: 36, color: "inherit" }}>
+                  {item.icon}
+                </ListItemIcon>
+                <ListItemText primary={item.label} />
               </ListItemButton>
             </ListItem>
-          </>
-        )}
+          );
+        })}
       </List>
     </Drawer>
   );

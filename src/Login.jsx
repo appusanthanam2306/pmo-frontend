@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { useAuth } from "./AuthContext";
 import {
   Container,
   Paper,
@@ -15,7 +16,15 @@ const Login = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [redirectToHome, setRedirectToHome] = useState(false);
   const navigate = useNavigate();
+  const { login, isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (isAuthenticated && redirectToHome) {
+      navigate("/");
+    }
+  }, [isAuthenticated, redirectToHome, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,9 +36,8 @@ const Login = () => {
           password,
         },
       );
-      localStorage.setItem("token", response.data.token);
-      localStorage.setItem("user", JSON.stringify(response.data.user));
-      navigate("/");
+      login(response.data.token, response.data.user);
+      setRedirectToHome(true);
     } catch (err) {
       setError("Invalid credentials");
     }

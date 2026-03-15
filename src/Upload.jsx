@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "./AuthContext";
 import {
   Box,
   Button,
@@ -40,7 +41,7 @@ const Upload = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const authToken = useMemo(() => localStorage.getItem("token"), []);
+  const { token } = useAuth();
   const [roles, setRoles] = useState([]);
 
   const loadRoles = async () => {
@@ -48,7 +49,7 @@ const Upload = () => {
       const response = await axios.get(
         "http://localhost:3000/api/sheets/roles",
         {
-          headers: { Authorization: `Bearer ${authToken}` },
+          headers: { Authorization: `Bearer ${token}` },
         },
       );
       setRoles(response.data.roles || []);
@@ -84,7 +85,7 @@ const Upload = () => {
         {
           headers: {
             "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${authToken}`,
+            Authorization: `Bearer ${token}`,
           },
         },
       );
@@ -122,7 +123,7 @@ const Upload = () => {
         },
         {
           headers: {
-            Authorization: `Bearer ${authToken}`,
+            Authorization: `Bearer ${token}`,
           },
         },
       );
@@ -150,7 +151,7 @@ const Upload = () => {
         { data },
         {
           headers: {
-            Authorization: `Bearer ${authToken}`,
+            Authorization: `Bearer ${token}`,
           },
         },
       );
@@ -247,7 +248,9 @@ const Upload = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 700 }}>Column</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Editable roles</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>
+                      Editable roles
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
