@@ -28,10 +28,20 @@ const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { token, user } = useAuth();
-  const [sheetsOpen, setSheetsOpen] = useState(false);
+  const [sheetsOpen, setSheetsOpen] = useState(true);
 
   const isActive = (path) => location.pathname === path;
   const isActiveStartsWith = (path) => location.pathname.startsWith(path);
+
+  const fetchSheets = async () => {
+    console.log("Sidebar: fetchSheets called", { token });
+    try {
+      const response = await axios.get("http://localhost:3000/api/sheets");
+      setSheets(response.data.sheets);
+    } catch (error) {
+      console.error("Error fetching sheets:", error);
+    }
+  };
 
   useEffect(() => {
     // Ensure the Sheets section is expanded when the user is on a sheet.
@@ -41,20 +51,12 @@ const Sidebar = () => {
   }, [location.pathname]);
 
   useEffect(() => {
+    console.log("Sidebar token effect", { token });
     if (token) {
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
       fetchSheets();
     }
   }, [token]);
-
-  const fetchSheets = async () => {
-    try {
-      const response = await axios.get("http://localhost:3000/api/sheets");
-      setSheets(response.data.sheets);
-    } catch (error) {
-      console.error("Error fetching sheets:", error);
-    }
-  };
 
   const menuItems = useMemo(
     () => [

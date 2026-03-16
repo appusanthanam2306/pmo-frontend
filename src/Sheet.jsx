@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import axios from "axios";
 import {
@@ -13,21 +13,68 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
   Typography,
   Alert,
+  Select,
+  TextField,
+  Menu,
+  MenuItem,
+  FormControl,
+  Checkbox,
+  ListItemText,
+  IconButton,
 } from "@mui/material";
+import FilterListIcon from "@mui/icons-material/FilterList";
+
+class SheetErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error("Sheet render error:", error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Box sx={{ p: 2 }}>
+          <Alert severity="error">
+            <strong>Something went wrong loading this page.</strong>
+            <br />
+            {this.state.error?.message}
+          </Alert>
+        </Box>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const Sheet = () => {
   const { id } = useParams();
+  const [sheetName, setSheetName] = useState("Sheet Data");
   const [columns, setColumns] = useState([]);
   const [data, setData] = useState([]);
+  const [filterOptions, setFilterOptions] = useState({});
+  const [columnFilters, setColumnFilters] = useState({});
+  const [filterMenu, setFilterMenu] = useState({
+    anchorEl: null,
+    column: null,
+  });
   const [changes, setChanges] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const navigate = useNavigate();
 
   const fetchSheetData = async () => {
     setLoading(true);
@@ -39,9 +86,14 @@ const Sheet = () => {
           headers: { Authorization: `Bearer ${token}` },
         },
       );
-      setColumns(response.data.columns || []);
-      setData(response.data.data || []);
+      const cols = response.data.columns || [];
+      const rows = response.data.data || [];
+
+      setSheetName(response.data.sheetName || "Sheet Data");
+      setColumns(cols);
+      setData(rows);
       setChanges({});
+      updateFiltersForData(rows, cols);
     } catch (err) {
       setError(err.response?.data?.error || "Failed to load sheet data");
     } finally {
@@ -49,9 +101,28 @@ const Sheet = () => {
     }
   };
 
+  const handleDeleteSheet = async () => {
+    if (!window.confirm("Delete this sheet? This will hide it from the UI."))
+      return;
+
+    try {
+      await axios.delete(`http://localhost:3000/api/sheets/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      navigate("/");
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to delete sheet");
+    }
+  };
+
   useEffect(() => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
     fetchSheetData();
-  }, [id]);
+  }, [id, token]);
 
   const handleCellChange = (rowIndex, columnName, value) => {
     const key = `${rowIndex}-${columnName}`;
@@ -67,6 +138,78 @@ const Sheet = () => {
       ? changes[key]
       : data[rowIndex]?.[columnName] || "";
   };
+
+  const updateFiltersForData = (dataRows, cols) => {
+    const options = {};
+    const filterableCols = cols.filter((col) => col?.filterable);
+
+    filterableCols.forEach((col) => {
+      const colName = col?.name || col;
+      const values = new Set();
+      dataRows.forEach((row) => {
+        const value = row[colName];
+        if (value !== undefined && value !== null) {
+          values.add(value.toString());
+        }
+      });
+      options[colName] = Array.from(values).sort();
+    });
+
+    setFilterOptions(options);
+    setColumnFilters((prev) => {
+      const next = {};
+      filterableCols.forEach((col) => {
+        const colName = col?.name || col;
+        next[colName] = prev[colName] ?? options[colName] ?? [];
+      });
+      return next;
+    });
+  };
+
+  const handleFilterChange = (columnName, selected) => {
+    setColumnFilters((prev) => ({
+      ...prev,
+      [columnName]: selected,
+    }));
+  };
+
+  const openFilterMenu = (event, columnName) => {
+    setFilterMenu({ anchorEl: event.currentTarget, column: columnName });
+  };
+
+  const closeFilterMenu = () => {
+    setFilterMenu({ anchorEl: null, column: null });
+  };
+
+  const handleFilterToggle = (columnName, value) => {
+    const current = columnFilters[columnName] || [];
+    const next = current.includes(value)
+      ? current.filter((v) => v !== value)
+      : [...current, value];
+    handleFilterChange(columnName, next);
+  };
+
+  const handleSelectAll = (columnName) => {
+    const options = filterOptions[columnName] || [];
+    const selected = columnFilters[columnName] || [];
+    const allSelected = selected.length === options.length;
+
+    handleFilterChange(columnName, allSelected ? [] : [...options]);
+  };
+
+  const filteredData = data.filter((row) => {
+    return columns.every((col) => {
+      const colName = col?.name || col;
+      if (!col?.filterable) return true;
+
+      const selected = columnFilters[colName] || [];
+      if (!selected || selected.length === 0) return true;
+
+      const value = row[colName] ?? "";
+      return selected.includes(value.toString());
+    });
+  });
+
 
   const isCellChanged = (rowIndex, columnName) => {
     const key = `${rowIndex}-${columnName}`;
@@ -119,85 +262,244 @@ const Sheet = () => {
   }
 
   return (
-    <Box sx={{ width: "100%", mt: 2 }}>
-      <Typography variant="h6" gutterBottom>
-        Sheet Data
-      </Typography>
+    <SheetErrorBoundary>
+      <Box sx={{ width: "100%", mt: 2, px: 2 }}>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          mb: 1,
+        }}
+      >
+        <Typography variant="h6" gutterBottom>
+          {sheetName}
+        </Typography>
+        {user?.role === "ADMIN" && (
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            onClick={handleDeleteSheet}
+          >
+            Delete
+          </Button>
+        )}
+      </Box>
 
       <TableContainer
         component={Paper}
         variant="outlined"
-        sx={{ width: "100%" }}
+        sx={{ width: "100%", maxWidth: "100%", mx: "auto" }}
       >
-        <Table size="small">
+        <Table size="small" sx={{ width: "100%" }}>
           <TableHead>
             <TableRow>
-              {columns.map((col) => (
-                <TableCell
-                  key={col.name}
-                  sx={{
-                    fontWeight: 700,
-                    p: 0.5,
-                    minWidth: 140,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {col.name}
-                </TableCell>
-              ))}
+              {columns.map((col) => {
+                const colName = col?.name || col;
+                return (
+                  <TableCell
+                    key={colName}
+                    sx={{
+                      fontWeight: 700,
+                      fontSize: 12,
+                      p: 0.5,
+                      minWidth: 140,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 1,
+                      }}
+                    >
+                      {colName}
+                      {col.filterable && (
+                        <IconButton
+                          size="small"
+                          onClick={(e) => openFilterMenu(e, colName)}
+                          sx={{ p: 0, minWidth: 24, height: 24 }}
+                        >
+                          <FilterListIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      )}
+                    </Box>
+                  </TableCell>
+                );
+              })}
             </TableRow>
           </TableHead>
           <TableBody>
-            {data.map((row, rowIndex) => (
-              <TableRow key={rowIndex}>
-                {columns.map((col) => (
-                  <TableCell
-                    key={col.name}
-                    sx={{ p: 0.5, minWidth: 140, verticalAlign: "top" }}
-                  >
-                    {col.canEdit ? (
-                      <TextField
-                        size="small"
-                        fullWidth
-                        variant="outlined"
-                        value={getCellValue(rowIndex, col.name)}
-                        onChange={(e) =>
-                          handleCellChange(rowIndex, col.name, e.target.value)
-                        }
-                        InputProps={{
-                          sx: {
-                            fontSize: 13,
-                            padding: "4px 8px",
-                            backgroundColor: isCellChanged(rowIndex, col.name)
-                              ? "#fff3cd"
-                              : "transparent",
-                          },
-                        }}
-                      />
-                    ) : (
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          fontSize: 13,
-                          p: 0.75,
-                          backgroundColor: isCellChanged(rowIndex, col.name)
-                            ? "#fff3cd"
-                            : "transparent",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {getCellValue(rowIndex, col.name)}
-                      </Typography>
-                    )}
-                  </TableCell>
-                ))}
+            {filteredData.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={columns.length} sx={{ py: 4 }}>
+                  <Typography align="center" color="text.secondary">
+                    No rows match the current filter or the sheet has no data.
+                  </Typography>
+                </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              filteredData.map((row, rowIndex) => (
+                <TableRow key={rowIndex}>
+                  {columns.map((col) => {
+                    const colName = col?.name || col;
+                    return (
+                      <TableCell
+                        key={colName}
+                        sx={{ p: 0.5, verticalAlign: "top" }}
+                      >
+                        {col.canEdit ? (
+                          col.datatype === "Dropdown" ? (
+                            <FormControl fullWidth size="small" sx={{ m: 0 }}>
+                              <Select
+                                displayEmpty
+                                value={getCellValue(rowIndex, colName) || ""}
+                                onChange={(e) =>
+                                  handleCellChange(
+                                    rowIndex,
+                                    colName,
+                                    e.target.value,
+                                  )
+                                }
+                                renderValue={(selected) =>
+                                  selected ? (
+                                    selected
+                                  ) : (
+                                    <em style={{ color: "#6b7280" }}>Select</em>
+                                  )
+                                }
+                                sx={{
+                                  fontSize: 13,
+                                  backgroundColor: isCellChanged(
+                                    rowIndex,
+                                    colName,
+                                  )
+                                    ? "#fff3cd"
+                                    : "transparent",
+                                  height: 36,
+                                  "& .MuiSelect-select": {
+                                    display: "flex",
+                                    alignItems: "center",
+                                    padding: "6px 32px 6px 10px",
+                                  },
+                                }}
+                              >
+                                <MenuItem disabled value="">
+                                  <em>Select</em>
+                                </MenuItem>
+                                {(col.dropdownOptions || []).map((option) => (
+                                  <MenuItem key={option} value={option}>
+                                    {option}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          ) : (
+                            <TextField
+                              size="small"
+                              fullWidth
+                              variant="outlined"
+                              type={
+                                col.datatype === "Number" ? "number" : "text"
+                              }
+                              placeholder={
+                                col.datatype === "Date" ? "dd-MMM-yy" : undefined
+                              }
+                              inputProps={
+                                col.datatype === "Date"
+                                  ? { pattern: "\\d{2}-[A-Za-z]{3}-\\d{2}" }
+                                  : undefined
+                              }
+                              value={getCellValue(rowIndex, colName)}
+                              onChange={(e) =>
+                                handleCellChange(
+                                  rowIndex,
+                                  colName,
+                                  e.target.value,
+                                )
+                              }
+                              InputProps={{
+                                sx: {
+                                  fontSize: 13,
+                                  backgroundColor: isCellChanged(
+                                    rowIndex,
+                                    colName,
+                                  )
+                                    ? "#fff3cd"
+                                    : "transparent",
+                                },
+                              }}
+                            />
+                          )
+                        ) : (
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontSize: 13,
+                              p: 0.75,
+                              backgroundColor: isCellChanged(
+                                rowIndex,
+                                colName,
+                              )
+                                ? "#fff3cd"
+                                : "transparent",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {getCellValue(rowIndex, colName)}
+                          </Typography>
+                        )}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </TableContainer>
+      <Menu
+        anchorEl={filterMenu.anchorEl}
+        open={Boolean(filterMenu.anchorEl)}
+        onClose={closeFilterMenu}
+        MenuListProps={{ dense: true }}
+      >
+        {filterMenu.column && (
+          <Box sx={{ minWidth: 220, maxHeight: 300, overflow: "auto" }}>
+            <MenuItem
+              onClick={() => handleSelectAll(filterMenu.column)}
+              dense
+            >
+              <Checkbox
+                checked={
+                  (columnFilters[filterMenu.column] || []).length ===
+                  (filterOptions[filterMenu.column] || []).length
+                }
+              />
+              <ListItemText primary="Select all" />
+            </MenuItem>
+            {(filterOptions[filterMenu.column] || []).map((option) => (
+              <MenuItem
+                key={option}
+                onClick={() => handleFilterToggle(filterMenu.column, option)}
+                dense
+              >
+                <Checkbox
+                  checked={
+                    (columnFilters[filterMenu.column] || []).includes(option)
+                  }
+                />
+                <ListItemText primary={option} />
+              </MenuItem>
+            ))}
+          </Box>
+        )}
+      </Menu>
 
       <Box sx={{ mt: 1, display: "flex", justifyContent: "flex-end" }}>
         <Button
@@ -210,6 +512,7 @@ const Sheet = () => {
         </Button>
       </Box>
     </Box>
+    </SheetErrorBoundary>
   );
 };
 

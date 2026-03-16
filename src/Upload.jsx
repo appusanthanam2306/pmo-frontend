@@ -24,7 +24,12 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Chip,
+  IconButton,
+  Stack,
 } from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import CloseIcon from "@mui/icons-material/Close";
 import axios from "axios";
 
 const steps = ["Upload file", "Configure columns", "Save data"];
@@ -96,6 +101,9 @@ const Upload = () => {
         (response.data.columns || []).map((col) => ({
           name: col,
           editableRoles: roles.length > 0 ? [roles[0]] : ["ADMIN"],
+          datatype: "Text",
+          dropdownOptions: [],
+          filterable: false,
         })),
       );
       setActiveStep(1);
@@ -106,11 +114,30 @@ const Upload = () => {
     }
   };
 
+  const validateColumns = () => {
+    for (const col of columnConfig) {
+      if (col.datatype === "Dropdown") {
+        const options = col.dropdownOptions || [];
+        if (options.length === 0) {
+          return `Dropdown column \"${col.name}\" requires at least one option.`;
+        }
+      }
+    }
+    return null;
+  };
+
   const handleConfigure = async () => {
     if (!sheetName) {
       setError("Please provide a sheet name.");
       return;
     }
+
+    const validationError = validateColumns();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setError("");
     setLoading(true);
 
@@ -167,6 +194,71 @@ const Upload = () => {
     setColumnConfig((prev) =>
       prev.map((col) =>
         col.name === colName ? { ...col, editableRoles: rolesSelected } : col,
+      ),
+    );
+  };
+
+  const handleDatatypeChange = (colName, datatype) => {
+    setColumnConfig((prev) =>
+      prev.map((col) =>
+        col.name === colName
+          ? {
+              ...col,
+              datatype,
+              dropdownOptions:
+                datatype === "Dropdown" ? col.dropdownOptions : [],
+              dropdownOptionInput: "",
+            }
+          : col,
+      ),
+    );
+  };
+
+  const handleFilterableToggle = (colName, checked) => {
+    setColumnConfig((prev) =>
+      prev.map((col) =>
+        col.name === colName ? { ...col, filterable: checked } : col,
+      ),
+    );
+  };
+
+  const handleDropdownOptionInputChange = (colName, value) => {
+    setColumnConfig((prev) =>
+      prev.map((col) =>
+        col.name === colName ? { ...col, dropdownOptionInput: value } : col,
+      ),
+    );
+  };
+
+  const handleAddDropdownOption = (colName) => {
+    setColumnConfig((prev) =>
+      prev.map((col) => {
+        if (col.name !== colName) return col;
+        const option = (col.dropdownOptionInput || "").trim();
+        if (!option) return col;
+        const existing = col.dropdownOptions || [];
+        if (existing.includes(option))
+          return { ...col, dropdownOptionInput: "" };
+        return {
+          ...col,
+          dropdownOptions: [...existing, option],
+          dropdownOptionInput: "",
+        };
+      }),
+    );
+  };
+
+  const handleRemoveDropdownOption = (colName, optionToRemove) => {
+    setColumnConfig((prev) =>
+      prev.map((col) =>
+        col.name === colName
+          ? {
+              ...col,
+              dropdownOptions: (col.dropdownOptions || []).filter(
+                (opt) => opt !== optionToRemove,
+              ),
+            }
+          : col,
       ),
     );
   };
@@ -248,8 +340,13 @@ const Upload = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 700 }}>Column</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Datatype</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Filterable</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>
                       Editable roles
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>
+                      Dropdown options
                     </TableCell>
                   </TableRow>
                 </TableHead>
@@ -258,6 +355,35 @@ const Upload = () => {
                     <TableRow key={col.name}>
                       <TableCell sx={{ width: 220, fontWeight: 600 }}>
                         {col.name}
+                      </TableCell>
+                      <TableCell sx={{ width: 180 }}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel id={`datatype-label-${col.name}`}>
+                            Datatype
+                          </InputLabel>
+                          <Select
+                            labelId={`datatype-label-${col.name}`}
+                            value={col.datatype}
+                            label="Datatype"
+                            onChange={(e) =>
+                              handleDatatypeChange(col.name, e.target.value)
+                            }
+                          >
+                            <MenuItem value="Text">Text</MenuItem>
+                            <MenuItem value="Number">Number</MenuItem>
+                            <MenuItem value="Date">Date</MenuItem>
+                            <MenuItem value="Dropdown">Dropdown</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </TableCell>
+                      <TableCell sx={{ width: 120 }}>
+                        <Checkbox
+                          checked={col.filterable || false}
+                          onChange={(e) =>
+                            handleFilterableToggle(col.name, e.target.checked)
+                          }
+                          size="small"
+                        />
                       </TableCell>
                       <TableCell>
                         <FormControl fullWidth size="small">
@@ -291,6 +417,70 @@ const Upload = () => {
                           </Select>
                         </FormControl>
                       </TableCell>
+                      <TableCell>
+                        {col.datatype === "Dropdown" ? (
+                          <Stack spacing={1}>
+                            <Stack
+                              direction="row"
+                              spacing={1}
+                              alignItems="center"
+                            >
+                              <TextField
+                                size="small"
+                                fullWidth
+                                value={col.dropdownOptionInput || ""}
+                                onChange={(e) =>
+                                  handleDropdownOptionInputChange(
+                                    col.name,
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder="Add option"
+                              />
+                              <IconButton
+                                color="primary"
+                                size="small"
+                                onClick={() =>
+                                  handleAddDropdownOption(col.name)
+                                }
+                                disabled={!col.dropdownOptionInput?.trim()}
+                              >
+                                <AddIcon fontSize="small" />
+                              </IconButton>
+                            </Stack>
+
+                            <Stack direction="row" spacing={1} flexWrap="wrap">
+                              {(col.dropdownOptions || []).map((option) => (
+                                <Chip
+                                  key={option}
+                                  label={option}
+                                  onDelete={() =>
+                                    handleRemoveDropdownOption(col.name, option)
+                                  }
+                                  size="small"
+                                />
+                              ))}
+                            </Stack>
+
+                            {(!col.dropdownOptions ||
+                              col.dropdownOptions.length === 0) && (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                Add at least one option
+                              </Typography>
+                            )}
+                          </Stack>
+                        ) : (
+                          <Typography
+                            variant="body2"
+                            sx={{ color: "text.secondary" }}
+                          >
+                            N/A
+                          </Typography>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -300,7 +490,17 @@ const Upload = () => {
             <Button
               variant="contained"
               onClick={handleConfigure}
-              disabled={loading}
+              disabled={
+                loading ||
+                Boolean(
+                  columnConfig.find(
+                    (col) =>
+                      col.datatype === "Dropdown" &&
+                      (!col.dropdownOptions ||
+                        col.dropdownOptions.length === 0),
+                  ),
+                )
+              }
               size="small"
             >
               {loading ? <CircularProgress size={20} /> : "Create sheet"}
@@ -310,18 +510,50 @@ const Upload = () => {
       case 2:
         return (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Typography variant="subtitle1">Save data</Typography>
-            <Typography>
-              Sheet ID: <strong>{sheetId}</strong>
-            </Typography>
-            <Typography>{`Parsed rows: ${data.length}`}</Typography>
-            <Button
-              variant="contained"
-              onClick={handleSaveData}
-              disabled={loading}
-            >
-              {loading ? <CircularProgress size={20} /> : "Save data"}
-            </Button>
+            <Typography variant="subtitle1">Preview data</Typography>
+
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    {columns.map((col) => (
+                      <TableCell key={col} sx={{ fontWeight: 700 }}>
+                        {col}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {data.map((row, rowIndex) => (
+                    <TableRow key={rowIndex}>
+                      {columns.map((col) => (
+                        <TableCell key={col} sx={{ px: 1, py: 0.5 }}>
+                          {row[col] ?? ""}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+              <Button
+                variant="outlined"
+                onClick={() => setActiveStep(1)}
+                disabled={loading}
+              >
+                Back to configure
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleSaveData}
+                disabled={loading}
+              >
+                {loading ? <CircularProgress size={20} /> : "Save data"}
+              </Button>
+            </Box>
+
             {success && <Alert severity="success">{success}</Alert>}
           </Box>
         );
@@ -335,7 +567,7 @@ const Upload = () => {
       <Typography variant="h6" gutterBottom>
         Upload & Configure Sheet
       </Typography>
-      <Stepper activeStep={activeStep} sx={{ mb: 2 }} alternativeLabel>
+      <Stepper activeStep={activeStep} sx={{ mb: 3, mx: 2 }} alternativeLabel>
         {steps.map((label) => (
           <Step key={label}>
             <StepLabel>{label}</StepLabel>
