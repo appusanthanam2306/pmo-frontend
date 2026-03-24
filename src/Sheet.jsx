@@ -72,6 +72,8 @@ const Sheet = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [newColumnName, setNewColumnName] = useState("");
+  const [newRowData, setNewRowData] = useState("{}");
 
   const { token, user } = useAuth();
   const navigate = useNavigate();
@@ -204,6 +206,19 @@ const Sheet = () => {
   };
 
   const filteredData = data.filter((row, rowIdx) => {
+    // Row-level access control: Non-admin users only see rows where their name appears in any column
+    if ((user?.role || "").toUpperCase() !== "ADMIN") {
+      const hasMatchingValue = Object.values(row).some(
+        (val) => val && val.toString() === user.username,
+      );
+      console.log(
+        `[FILTER DEBUG] Row ${rowIdx} check: hasMatchingValue=${hasMatchingValue}, user=${user.username}, rowValues=${JSON.stringify(row)}`,
+      );
+      if (!hasMatchingValue) {
+        return false;
+      }
+    }
+
     return columns.every((col) => {
       const colName = col?.name || col;
       if (!col?.filterable) return true;
@@ -256,8 +271,46 @@ const Sheet = () => {
         },
       );
       await fetchSheetData(); // Refresh data
+      window.dispatchEvent(new Event("dashboard-refresh"));
     } catch (err) {
       setError(err.response?.data?.error || "Failed to save changes");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddColumnAndRow = async () => {
+    if (!newColumnName.trim()) {
+      setError("New column name is required");
+      return;
+    }
+
+    let rowDataObj = {};
+    try {
+      rowDataObj = JSON.parse(newRowData);
+      if (typeof rowDataObj !== "object" || Array.isArray(rowDataObj)) {
+        throw new Error("Row data must be a JSON object");
+      }
+    } catch (parseError) {
+      setError("rowData must be valid JSON object");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await axios.post(
+        `http://localhost:3000/api/sheets/${id}/admin/add-column-row`,
+        { newColumnName: newColumnName.trim(), rowData: rowDataObj },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      setNewColumnName("");
+      setNewRowData("{}");
+      await fetchSheetData();
+      window.dispatchEvent(new Event("dashboard-refresh"));
+    } catch (err) {
+      console.error("Add column/row error", err);
+      setError(err.response?.data?.error || "Failed to add column and row");
     } finally {
       setSaving(false);
     }

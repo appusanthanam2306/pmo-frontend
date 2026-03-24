@@ -66,12 +66,16 @@ const Sidebar = () => {
         icon: <HomeIcon fontSize="small" />,
         path: "/",
       },
-      {
-        key: "upload",
-        label: "Upload",
-        icon: <UploadFileIcon fontSize="small" />,
-        path: "/upload",
-      },
+      ...(user?.role === "ADMIN"
+        ? [
+            {
+              key: "upload",
+              label: "Upload",
+              icon: <UploadFileIcon fontSize="small" />,
+              path: "/upload",
+            },
+          ]
+        : []),
       {
         key: "sheets",
         label: "Sheets",
@@ -85,7 +89,7 @@ const Sidebar = () => {
         adminOnly: true,
       },
     ],
-    [],
+    [user?.role],
   );
 
   return (
